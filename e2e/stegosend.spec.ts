@@ -127,6 +127,18 @@ test('binary file survives byte-for-byte', async ({ page }, testInfo) => {
   expect(await readFile(resultPath)).toEqual(source)
 })
 
+test('password inputs stay aligned when only one field has supporting text', async ({ page }) => {
+  await page.goto('/')
+
+  const passwordBox = await page.getByLabel('设置口令').boundingBox()
+  const confirmationBox = await page.getByLabel('确认口令').boundingBox()
+
+  expect(passwordBox).not.toBeNull()
+  expect(confirmationBox).not.toBeNull()
+  expect(Math.abs(passwordBox!.y - confirmationBox!.y)).toBeLessThanOrEqual(1)
+  expect(Math.abs(passwordBox!.height - confirmationBox!.height)).toBeLessThanOrEqual(1)
+})
+
 test('mobile workspace has no horizontal overflow', async ({ page }) => {
   await page.goto('/')
 
