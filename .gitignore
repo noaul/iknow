@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+coverage
+playwright-report
+test-results
 
 # Unused create-vite demo assets
 src/assets/

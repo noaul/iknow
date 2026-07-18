@@ -29,7 +29,13 @@ function ensureActive(id: string): void {
 
 async function encode(request: EncodeRequest): Promise<void> {
   progress(request.id, '读取图片', 10)
-  const image = await decodeImageFile(request.image)
+  const image = request.raster
+    ? {
+        width: request.raster.width,
+        height: request.raster.height,
+        pixels: new Uint8ClampedArray(request.raster.pixels),
+      }
+    : await decodeImageFile(request.image as File)
   ensureActive(request.id)
 
   progress(request.id, '派生密钥', 35)
@@ -47,6 +53,22 @@ async function encode(request: EncodeRequest): Promise<void> {
   ensureActive(request.id)
 
   progress(request.id, '嵌入信息', 75)
+  if (request.raster) {
+    const pixels = Uint8ClampedArray.from(encoded).buffer
+    post(
+      {
+        type: 'result',
+        operation: 'encode-pixels',
+        id: request.id,
+        width: image.width,
+        height: image.height,
+        pixels,
+      },
+      [pixels],
+    )
+    return
+  }
+
   progress(request.id, '生成 PNG', 90)
   const png = await (await pixelsToPng(encoded, image.width, image.height)).arrayBuffer()
   ensureActive(request.id)
@@ -65,7 +87,13 @@ async function encode(request: EncodeRequest): Promise<void> {
 
 async function decode(request: DecodeRequest): Promise<void> {
   progress(request.id, '读取图片', 10)
-  const image = await decodeImageFile(request.image)
+  const image = request.raster
+    ? {
+        width: request.raster.width,
+        height: request.raster.height,
+        pixels: new Uint8ClampedArray(request.raster.pixels),
+      }
+    : await decodeImageFile(request.image as File)
   ensureActive(request.id)
 
   progress(request.id, '派生密钥', 35)
@@ -102,4 +130,3 @@ scope.onmessage = (event: MessageEvent<WorkerRequest>) => {
     .catch((error: unknown) => post(workerError(request.id, error)))
     .finally(() => cancelled.delete(request.id))
 }
-

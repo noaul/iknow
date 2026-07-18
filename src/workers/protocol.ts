@@ -7,10 +7,17 @@ export interface TransferSecretPayload {
   bytes: ArrayBuffer
 }
 
+export interface TransferRasterImage {
+  width: number
+  height: number
+  pixels: ArrayBuffer
+}
+
 export interface EncodeRequest {
   type: 'encode'
   id: string
-  image: File
+  image?: File
+  raster?: TransferRasterImage
   payload: TransferSecretPayload
   password: string
 }
@@ -18,7 +25,8 @@ export interface EncodeRequest {
 export interface DecodeRequest {
   type: 'decode'
   id: string
-  image: File
+  image?: File
+  raster?: TransferRasterImage
   password: string
 }
 
@@ -47,6 +55,15 @@ export interface EncodeResultResponse {
   png: ArrayBuffer
 }
 
+export interface EncodePixelsResultResponse {
+  type: 'result'
+  operation: 'encode-pixels'
+  id: string
+  width: number
+  height: number
+  pixels: ArrayBuffer
+}
+
 export interface DecodeResultResponse {
   type: 'result'
   operation: 'decode'
@@ -64,6 +81,7 @@ export interface ErrorResponse {
 export type WorkerResponse =
   | ProgressResponse
   | EncodeResultResponse
+  | EncodePixelsResultResponse
   | DecodeResultResponse
   | ErrorResponse
 
@@ -77,4 +95,3 @@ export function workerError(id: string, error: unknown): ErrorResponse {
     message: safeError.message,
   }
 }
-

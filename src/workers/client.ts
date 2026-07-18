@@ -1,4 +1,5 @@
 import { StegoError } from '../domain/errors'
+import { decodeImageFile, pixelsToPng } from '../image/decode-image'
 import type {
   DecodeRequest,
   EncodeRequest,
@@ -83,8 +84,9 @@ function runJob<T>(
       reject(new StegoError('UNSUPPORTED_IMAGE'))
     }
 
-    const transfer =
-      request.type === 'encode' ? [request.payload.bytes] : []
+    const transfer: Transferable[] = []
+    if (request.type === 'encode') transfer.push(request.payload.bytes)
+    if (request.type !== 'cancel' && request.raster) transfer.push(request.raster.pixels)
     worker.postMessage(request, transfer)
   })
 
@@ -100,7 +102,98 @@ function runJob<T>(
   }
 }
 
+function cancellablePreparation<T>(
+  work: (setInnerJob: (job: WorkerJob<unknown>) => void) => Promise<T>,
+): WorkerJob<T> {
+  let innerJob: WorkerJob<unknown> | null = null
+  let rejectCancellation: (error: StegoError) => void = () => undefined
+  const cancellation = new Promise<never>((_resolve, reject) => {
+    rejectCancellation = reject
+  })
+  const promise = Promise.race([
+    work((job) => {
+      innerJob = job
+    }),
+    cancellation,
+  ])
+
+  return {
+    promise,
+    cancel(): void {
+      innerJob?.cancel()
+      rejectCancellation(new StegoError('CANCELLED'))
+    },
+  }
+}
+
+function fallbackEncode(
+  input: EncodeJobInput,
+  onProgress?: ProgressHandler,
+): WorkerJob<EncodeJobResult> {
+  const id = crypto.randomUUID()
+  return cancellablePreparation(async (setInnerJob) => {
+    onProgress?.({ type: 'progress', id, stage: '读取图片', percent: 10 })
+    const image = await decodeImageFile(input.image)
+    const pixels = Uint8ClampedArray.from(image.pixels).buffer
+    const request: EncodeRequest = {
+      type: 'encode',
+      id,
+      raster: { width: image.width, height: image.height, pixels },
+      payload: input.payload,
+      password: input.password,
+    }
+    const inner = runJob(
+      request,
+      (response) =>
+        response.type === 'result' && response.operation === 'encode-pixels'
+          ? response
+          : undefined,
+      onProgress,
+    )
+    setInnerJob(inner)
+    const result = await inner.promise
+    onProgress?.({ type: 'progress', id, stage: '生成 PNG', percent: 90 })
+    const png = await (
+      await pixelsToPng(
+        new Uint8ClampedArray(result.pixels),
+        result.width,
+        result.height,
+      )
+    ).arrayBuffer()
+    return { png, width: result.width, height: result.height }
+  })
+}
+
+function fallbackDecode(
+  input: DecodeJobInput,
+  onProgress?: ProgressHandler,
+): WorkerJob<DecodeJobResult> {
+  const id = crypto.randomUUID()
+  return cancellablePreparation(async (setInnerJob) => {
+    onProgress?.({ type: 'progress', id, stage: '读取图片', percent: 10 })
+    const image = await decodeImageFile(input.image)
+    const pixels = Uint8ClampedArray.from(image.pixels).buffer
+    const request: DecodeRequest = {
+      type: 'decode',
+      id,
+      raster: { width: image.width, height: image.height, pixels },
+      password: input.password,
+    }
+    const inner = runJob(
+      request,
+      (response) =>
+        response.type === 'result' && response.operation === 'decode'
+          ? response.payload
+          : undefined,
+      onProgress,
+    )
+    setInnerJob(inner)
+    return inner.promise
+  })
+}
+
 export const startEncodeJob: StartEncodeJob = (input, onProgress) => {
+  if (typeof OffscreenCanvas === 'undefined') return fallbackEncode(input, onProgress)
   const request: EncodeRequest = {
     type: 'encode',
     id: crypto.randomUUID(),
@@ -117,6 +210,7 @@ export const startEncodeJob: StartEncodeJob = (input, onProgress) => {
 }
 
 export const startDecodeJob: StartDecodeJob = (input, onProgress) => {
+  if (typeof OffscreenCanvas === 'undefined') return fallbackDecode(input, onProgress)
   const request: DecodeRequest = {
     type: 'decode',
     id: crypto.randomUUID(),
@@ -131,4 +225,3 @@ export const startDecodeJob: StartDecodeJob = (input, onProgress) => {
     onProgress,
   )
 }
-
