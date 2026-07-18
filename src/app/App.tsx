@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Download, ImagePlus, LockKeyhole, ShieldCheck } from 'lucide-react'
+import { EncodeView } from '../features/encode/EncodeView'
+import { DecodeView } from '../features/decode/DecodeView'
 
 type WorkspaceMode = 'encode' | 'decode'
 
@@ -58,9 +60,7 @@ function App() {
           role="tabpanel"
           aria-labelledby={`${mode}-heading`}
         >
-          <h2 id={`${mode}-heading`}>
-            {mode === 'encode' ? '藏入信息' : '提取信息'}
-          </h2>
+          {mode === 'encode' ? <EncodeView /> : <DecodeView />}
         </section>
       </main>
 

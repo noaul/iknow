@@ -11,6 +11,11 @@ export interface DecodedImage {
   pixels: Uint8ClampedArray
 }
 
+export interface ImageDimensions {
+  width: number
+  height: number
+}
+
 function containsAscii(bytes: Uint8Array, marker: string): boolean {
   const encoded = new TextEncoder().encode(marker)
   outer: for (let offset = 0; offset <= bytes.length - encoded.length; offset += 1) {
@@ -45,6 +50,23 @@ async function inspectAnimation(file: File): Promise<void> {
   )
   if (hasAnimationMarker(prefix, file.type)) {
     throw new StegoError('UNSUPPORTED_IMAGE', '暂不支持动画 PNG 或动画 WebP。')
+  }
+}
+
+export async function inspectImageFile(file: File): Promise<ImageDimensions> {
+  assertSupportedImage(file)
+  try {
+    await inspectAnimation(file)
+    const bitmap = await createImageBitmap(file)
+    try {
+      validateImageDimensions(bitmap.width, bitmap.height)
+      return { width: bitmap.width, height: bitmap.height }
+    } finally {
+      bitmap.close()
+    }
+  } catch (error) {
+    if (error instanceof StegoError) throw error
+    throw new StegoError('UNSUPPORTED_IMAGE')
   }
 }
 
@@ -129,4 +151,3 @@ export async function pixelsToPng(
     }, 'image/png')
   })
 }
-
